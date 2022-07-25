@@ -5,6 +5,8 @@ import genandnic.walljump.enchantment.SpeedBoostEnchant;
 import genandnic.walljump.enchantment.WallJumpEnchant;
 import genandnic.walljump.proxy.ClientProxy;
 import genandnic.walljump.proxy.CommonProxy;
+import net.minecraft.data.tags.BlockTagsProvider;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegistryEvent;

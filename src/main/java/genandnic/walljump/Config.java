@@ -20,6 +20,7 @@ public class Config {
         public final ForgeConfigSpec.BooleanValue stepAssist;
         public final ForgeConfigSpec.BooleanValue useDoubleJump;
         public final ForgeConfigSpec.BooleanValue useWallJump;
+        public final ForgeConfigSpec.BooleanValue useClinging;
         public final ForgeConfigSpec.DoubleValue wallJumpHeight;
         public final ForgeConfigSpec.IntValue wallSlideDelay;
 
@@ -57,8 +58,11 @@ public class Config {
                     .comment("Allows you to jump in mid-air")
                     .define("useDoubleJump", false);
             this.useWallJump = builder
-                    .comment("Allows you to wall cling and wall jump")
+                    .comment("Allows you to wall jump")
                     .define("useWallJump", true);
+            this.useClinging = builder
+                    .comment("Allows you to wall cling")
+                    .define("useClinging", true);
             this.wallJumpHeight = builder
                     .defineInRange("wallJumpHeight", 0.55, 0.0, 1.0);
             this.wallSlideDelay = builder

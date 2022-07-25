@@ -12,6 +12,9 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
@@ -19,6 +22,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
@@ -26,6 +30,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.HashSet;
 import java.util.Map;
@@ -39,10 +44,16 @@ public class WallJumpLogic {
     private static double clingX, clingZ;
     private static double lastJumpY = Double.MAX_VALUE;
 
+    private static final TagKey<Block> SLIPPERY = BlockTags.create(new ResourceLocation("mymod", "myitemgroup"));
+    private static final TagKey<Block> NO_CLING = BlockTags.create(new ResourceLocation(WallJump.MOD_ID, "unclingable"));
+    private static final TagKey<Block> NO_WALL_JUMP = BlockTags.create(new ResourceLocation(WallJump.MOD_ID, "no_wall_jump"));
+    private static final TagKey<Block> WALL_JUMP = BlockTags.create(new ResourceLocation(WallJump.MOD_ID, "wall_jump"));
+    private static final TagKey<Block> CAN_CLING = BlockTags.create(new ResourceLocation(WallJump.MOD_ID, "clingable"));
+    private static final TagKey<Block> CAN_RE_CLING = BlockTags.create(new ResourceLocation(WallJump.MOD_ID, "reclingable"));
+
     public static void doWallJump(LocalPlayer pl) {
 
-        if (!WallJumpLogic.canWallJump(pl))
-            return;
+        Block block = pl.level.getBlockState(getWallPos(pl)).getBlock();
 
         if (pl.isOnGround() || pl.getAbilities().flying || pl.isInWater()) {
 
@@ -60,7 +71,7 @@ public class WallJumpLogic {
 
         if (ticksWallClinged < 1) {
 
-            if (ticksKeyDown > 0 && ticksKeyDown < 4 && !walls.isEmpty() && canWallCling(pl)) {
+            if (ticksKeyDown > 0 && ticksKeyDown < 4 && !walls.isEmpty() && canWallCling(pl, block)) {
 
                 if (Config.COMMON.autoRotation.get())
                     pl.setYRot(getClingDirection().getOpposite().toYRot());
@@ -80,7 +91,11 @@ public class WallJumpLogic {
 
             ticksWallClinged = 0;
 
-            if ((pl.input.forwardImpulse != 0 || pl.input.leftImpulse != 0) && !pl.isOnGround() && !walls.isEmpty()) {
+            if ((pl.input.forwardImpulse != 0 ||
+                    pl.input.leftImpulse != 0) &&
+                    !pl.isOnGround() &&
+                    !walls.isEmpty() &&
+                    canWallJump(pl, block)) {
 
                 pl.fallDistance = 0.0F;
                 PacketHandler.INSTANCE.sendToServer(new MessageWallJump());
@@ -96,7 +111,10 @@ public class WallJumpLogic {
         pl.setPos(clingX, pl.position().y, clingZ);
 
         double motionY = pl.getDeltaMovement().y;
-        if (motionY > 0.0) {
+        if (checkBlockTag(SLIPPERY, block)) {
+            motionY = Math.min(motionY, -0.1);
+            spawnWallParticle(pl, getWallPos(pl));
+        } else if (motionY > 0.0) {
             motionY = 0.0;
         } else if (motionY < -0.6) {
             motionY = motionY + 0.2;
@@ -116,7 +134,13 @@ public class WallJumpLogic {
         pl.setDeltaMovement(0.0, motionY, 0.0);
     }
 
-    private static boolean canWallJump(LocalPlayer pl) {
+    private static boolean canWallJump(LocalPlayer pl, Block block) {
+
+        if (checkBlockTag(WALL_JUMP, block))
+            return true;
+
+        if (checkBlockTag(NO_WALL_JUMP, block))
+            return false;
 
         if (Config.COMMON.useWallJump.get()) return true;
 
@@ -129,14 +153,30 @@ public class WallJumpLogic {
         return false;
     }
 
-    private static boolean canWallCling(LocalPlayer pl) {
+    private static boolean canWallCling(LocalPlayer pl, Block block) {
+
+        if (checkBlockTag(NO_CLING, block))
+            return false;
 
         if (pl.onClimbable() || pl.getDeltaMovement().y > 0.1 || pl.getFoodData().getFoodLevel() < 1)
             return false;
 
         if (ClientProxy.collidesWithBlock(pl.level, pl.getBoundingBox().move(0, -0.8, 0))) return false;
 
-        if (Config.COMMON.allowReClinging.get() || pl.position().y < lastJumpY - 1) return true;
+        if (checkBlockTag(CAN_CLING, block) || checkBlockTag(CAN_RE_CLING, block)) return true;
+
+        if (!Config.COMMON.useClinging.get()) {
+            ItemStack stack = pl.getItemBySlot(EquipmentSlot.FEET);
+            if (!stack.isEmpty()) {
+                Map<Enchantment, Integer> enchantments = EnchantmentHelper.getEnchantments(stack);
+                return enchantments.containsKey(WallJump.WALLJUMP_ENCHANT);
+            }
+        }
+
+        if (Config.COMMON.allowReClinging.get()
+                || pl.position().y < lastJumpY - 1
+                || checkBlockTag(CAN_RE_CLING, block))
+            return true;
 
         return !staleWalls.containsAll(walls);
     }
@@ -230,6 +270,10 @@ public class WallJumpLogic {
 
         }
 
+    }
+
+    private static boolean checkBlockTag(TagKey<Block> tag, Block block) {
+        return ForgeRegistries.BLOCKS.tags().getTag(tag).contains(block);
     }
 
 }
